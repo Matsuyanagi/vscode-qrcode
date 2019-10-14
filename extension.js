@@ -28,6 +28,20 @@ const
   FILENAME = 'qrcode.gif',
   MAX_VERSION = 40;
 
+function createHtml(imageBase64) {
+  return `
+		<meta http-equiv='Content-Type' content='text/html;charset=utf-8' />
+		<meta http-equiv='Encoding' content='utf-8' />
+		<meta http-equiv='Content-Security-Policy' value='default-src 'none''/>
+			
+        <div style='display: flex; height: 100%; width: 100%;'>
+          <div style='display: flex; flex: 1; flex-direction: column; justify-content: center;'>
+            <img src='data:;base64,${imageBase64}' style='align-self: center;width=200%;' />
+          </div>
+        </div>
+      `;
+}
+
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 function activate(context) {
@@ -35,26 +49,12 @@ function activate(context) {
   // This line of code will only be executed once when your extension is activated
   // console.log('Congratulations, your extension "compulim-qrcode" is now active!');
 
-  vscode.workspace.registerTextDocumentContentProvider('qrcode-image', {
-    provideTextDocumentContent: uri => {
-      const query = parseQueryString('?' + uri.query);
-
-      return `
-        <div style="display: flex; height: 100%; width: 100%;">
-          <div style="display: flex; flex: 1; flex-direction: column; justify-content: center;">
-            <img src="data:;base64,${query.base64}" style="align-self: center;" />
-          </div>
-        </div>
-      `;
-    }
-  });
-
   // The command has been defined in the package.json file
   // Now provide the implementation of the command with  registerCommand
   // The commandId parameter must match the command field in package.json
   var disposable = vscode.commands.registerCommand('qrcode.generateFromSelected', () => {
     // The code you place here will be executed every time your command is executed
-    const filename = path.resolve(vscode.workspace.rootPath || '.', FILENAME);
+    const filename = path.resolve(vscode.workspace.workspaceFolders[0].uri.fsPath || '.', FILENAME);
 
     getSelectedTextOrPrompt('Text to convert into QR code')
       .then(text => {
@@ -81,10 +81,16 @@ function activate(context) {
                   return Q.nfcall(
                     fs.writeFile,
                     filename,
-                    new Buffer(base64, 'base64')
+                    Buffer.from( base64, 'base64')
                   )
                     .then(() => {
-                      vscode.commands.executeCommand('vscode.previewHtml', vscode.Uri.parse(`qrcode-image:qrcode.gif?base64=${encodeURIComponent(base64)}`));
+                      const panel = vscode.window.createWebviewPanel(
+                        'vscode-qrcode', // Identifies the type of the webview. Used internally
+                        'QR Code', // Title of the panel displayed to the user
+                        vscode.ViewColumn.One, // Editor column to show the new webview panel in.
+                        {} // Webview options. More on these later.
+                      );
+                      panel.webview.html = createHtml(encodeURIComponent(base64));
                       // vscode.window.showInformationMessage(`QR code with message "${text}" has been generated to file "${filename}"`);
                     }, err => {
                       throw new Error(`Failed to generate QR code to file "${filename}" due to "${err.message}"`);
@@ -121,7 +127,7 @@ function getSelectedTextOrPrompt(prompt) {
 function generateQRCodeAsBase64(text, level) {
   let qrcode;
 
-  for (let version = 1; version <= MAX_VERSION; version++) {
+  for (let version = 0; version <= MAX_VERSION; version++) {
     qrcode = QRCode(version, level);
     qrcode.addData(text);
 
